@@ -1,0 +1,39 @@
+Report Date Time,2025-08-26 09:15 AM
+Exported By (Name),Dr. Alex Kim
+Exported By (Email),akim@example-health.org
+Clinic Name,Example Health Endocrinology
+Workspace ID,ws_1234abcd
+Days of CGM Data Summarized,14 days
+Total Patients,30
+
+Patient Name,Patient User ID,MRN,Date of Birth,Custodial Status,Diabetes Type,CGM Last Data Date,BGM Last Data Date
+Maria Garcia,mg01,100001,1988-04-12,Unclaimed,Type 1,2025-08-20,
+Maria Garcia,mg02,100002,1988-04-12,Claimed,Type 1,,
+Jon Smith,js01,200001,1975-11-03,Claimed,Type 2,2025-08-01,
+John Smith,js02,200002,1975-11-03,Claimed,Type 2,2025-08-22,
+Robert Lee,rl01,300003,1990-02-02,Claimed,Type 1,2025-08-10,
+Robert Lee,rl02,300099,1990-02-02,Unclaimed,Type 1,2025-08-15,
+Bob Lee,rl03,300003,1990-02-02,Unclaimed,Type 1,2025-08-25,
+Emily Chen,ec01,,1995-06-06,Unclaimed,Type 1,,
+Emily Chen,ec02,,1995-06-06,Unclaimed,Type 1,,
+Wei Zhang,wz01,400004,1982-09-09,Unclaimed,LADA (Type 1.5),,
+Wei Zhang,wz02,400005,1982-09-09,Unclaimed,LADA (Type 1.5),,2025-07-15
+Catherine O'Brien,co01,500006,1970-01-01,Claimed,Type 2,2025-08-05,
+Katherine O'Brien,co02,500007,1970-01-01,Unclaimed,Type 2,2025-08-18,
+David Park,dp01,600008,2000-12-12,Claimed,Type 1,2025-08-24,
+Nancy Reed,nr01,600009,2000-12-12,Claimed,Type 2,2025-08-19,
+Aisha Khan,ak01,700010,1993-03-15,Claimed,Type 1,2025-08-23,
+Diego Torres,dt01,700011,1968-07-21,Claimed,Type 2,2025-08-11,2025-08-09
+Fatima Noor,fn01,700012,2001-10-30,Unclaimed,Gestational,2025-08-26,
+George Miller,gm01,700013,1955-05-05,Claimed,Type 2,,2025-08-02
+Hannah Brooks,hb01,700014,1987-01-19,Claimed,MODY/Monogenic,2025-08-17,
+Ibrahim Aziz,ia01,700015,1979-08-08,Claimed,Type 1,2025-08-21,
+Julia Novak,jn01,700016,1998-12-01,Unclaimed,Pre-diabetes,,
+Liam Murphy,lm01,700017,1962-11-11,Claimed,Type 2,2025-08-14,
+Priya Patel,pp01,700018,1991-04-27,Claimed,Type 1,2025-08-25,
+Sofia Rossi,sr01,700019,1984-02-14,Claimed,Type 3c,2025-08-13,
+Tyler Brooks,tb01,700020,1996-09-03,Claimed,Type 1,2025-08-16,
+Olivia Ford,of01,700021,1972-06-25,Claimed,Type 2,2025-08-12,
+Marcus Bell,mb01,700022,1959-03-30,Claimed,Type 2,,2025-08-01
+Nina Volkov,nv01,700023,2003-07-07,Unclaimed,Type 1,2025-08-26,
+Sam Rivera,sv01,700024,1980-10-10,Claimed,Type 1,2025-08-20,

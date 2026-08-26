@@ -65,11 +65,6 @@ def normalize(value: str) -> str:
     return (value or "").strip().lower()
 
 
-def detect_delimiter(sample_line: str) -> str:
-    """Pick tab if the header line contains one, otherwise comma."""
-    return "\t" if "\t" in sample_line else ","
-
-
 def resolve_column(header: list[str], aliases: list[str]) -> int | None:
     """Return the index of the first header cell matching any alias, else None."""
     wanted = {normalize(a) for a in aliases}
@@ -286,18 +281,24 @@ def process(
     def parse(delim: str) -> list[list[str]]:
         return list(csv.reader(lines, delimiter=delim))
 
-    rows = parse(delimiter or ",")
-    header_idx, name_idx, dob_idx, mrn_idx = find_header_row(
-        rows, name_aliases, dob_aliases, mrn_aliases
-    )
-
-    # Re-parse with the delimiter sniffed from the real header line unless forced.
-    if delimiter is None:
-        delimiter = detect_delimiter(lines[header_idx])
-        rows = parse(delimiter)
-        header_idx, name_idx, dob_idx, mrn_idx = find_header_row(
-            rows, name_aliases, dob_aliases, mrn_aliases
-        )
+    # Try candidate delimiters until one locates the patient-table header. A
+    # forced delimiter is the only candidate; otherwise try comma then tab.
+    candidates = [delimiter] if delimiter else [",", "\t"]
+    rows = None
+    last_error: ValueError | None = None
+    for delim in candidates:
+        parsed = parse(delim)
+        try:
+            header_idx, name_idx, dob_idx, mrn_idx = find_header_row(
+                parsed, name_aliases, dob_aliases, mrn_aliases
+            )
+        except ValueError as exc:
+            last_error = exc
+            continue
+        rows, delimiter = parsed, delim
+        break
+    if rows is None:
+        raise last_error
 
     preamble = rows[:header_idx]
     header = rows[header_idx]

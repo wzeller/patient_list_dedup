@@ -81,10 +81,16 @@ This writes `INPUT_dedup.csv` next to the input. To choose the output path:
 python3 patient_list_dedup.py INPUT.csv -o results.csv
 ```
 
-Try it on the included sample:
+Try it on the included samples:
 
 ```bash
+# small, minimal fixture
 python3 patient_list_dedup.py sample_patient_list.csv
+
+# longer, realistic export (metadata header block + 30 patients) that
+# demonstrates every feature: claimed-beats-data, latest-date tie-breaks,
+# transitive groups, fuzzy spelling variants, and no-signal blanks
+python3 patient_list_dedup.py sample_patient_list_large.csv
 ```
 
 ### Input columns
@@ -144,3 +150,17 @@ Run against the sample and inspect the added columns:
 python3 patient_list_dedup.py sample_patient_list.csv -o /tmp/out.csv
 column -s, -t /tmp/out.csv
 ```
+
+### Tests
+
+The suite uses only the standard library (`unittest`) — no setup required. From the
+repository root:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+It covers normalization and date parsing, the fuzzy-name threshold, transitive grouping
+(name ∪ MRN), the flag/why/recommendation logic for each priority tier and the
+no-signal-blank case, and a `process` round-trip on both a bare 3-column file and a full
+export with a metadata header block (including delimiter auto-detection).
