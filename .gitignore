@@ -17,6 +17,9 @@ env/
 data/
 *.csv
 *.xlsx
+# ...but keep the synthetic test fixture (no real patient data)
+!sample_patient_list.csv
+*_dedup.csv
 *.parquet
 
 # Tooling
