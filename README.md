@@ -100,6 +100,25 @@ python3 --version
 
 ## Download
 
+### Mac app (no Python needed)
+
+A double-clickable macOS app is published on the
+[**Releases**](https://github.com/wzeller/patient_list_dedup/releases) page (Apple
+Silicon). To use it:
+
+1. Download `PatientListDedup-macos-arm64.zip` from the latest release and unzip it.
+2. **First launch only** — because the app is unsigned, macOS Gatekeeper will block it.
+   Either **right-click the app → Open → Open**, or run once:
+   ```bash
+   xattr -dr com.apple.quarantine PatientListDedup.app
+   ```
+3. Choose a CSV, set options, and save the deduplicated result. Everything runs locally —
+   no patient data leaves your machine.
+
+The app is built automatically by CI; see [Building the Mac app](#building-the-mac-app).
+
+### Run from source
+
 Clone the repository:
 
 ```bash
@@ -111,6 +130,12 @@ Or, if you only need the script, download it directly:
 
 ```bash
 curl -O https://raw.githubusercontent.com/wzeller/patient_list_dedup/main/patient_list_dedup.py
+```
+
+You can also launch the same GUI from source (no packaging needed):
+
+```bash
+python3 gui.py
 ```
 
 ## Usage
@@ -201,6 +226,35 @@ Run against the sample and inspect the added columns:
 python3 patient_list_dedup.py sample_patient_list.csv -o /tmp/out.csv
 column -s, -t /tmp/out.csv
 ```
+
+### Building the Mac app
+
+The app is built and released by the
+[`build-mac-app`](.github/workflows/build-mac-app.yml) GitHub Actions workflow on a macOS
+runner. To cut a release that anyone can download:
+
+```bash
+git tag v1.0.0
+git push --tags
+```
+
+The workflow runs the tests, builds `PatientListDedup.app` with PyInstaller, zips it, and
+attaches it to the GitHub Release for that tag. A manual run (Actions → *Build macOS app* →
+*Run workflow*) instead uploads the app as a downloadable build artifact.
+
+To build locally (requires `pip install pyinstaller`):
+
+```bash
+pyinstaller --noconfirm PatientListDedup.spec   # -> dist/PatientListDedup.app
+```
+
+Notes:
+- The released app is **unsigned** — users bypass Gatekeeper once (see
+  [Mac app](#mac-app-no-python-needed)). To ship it without warnings, add Apple Developer
+  ID signing + notarization (store credentials as GitHub secrets); the workflow can be
+  extended to do this.
+- CI builds for **Apple Silicon (arm64)**. For Intel Macs, build a `universal2` binary or
+  add a second job.
 
 ### Tests
 
