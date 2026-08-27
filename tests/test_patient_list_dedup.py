@@ -34,6 +34,7 @@ def compute(rows, threshold=0.90):
         dob_idx=DOB,
         cgm_idx=CGM,
         bgm_idx=BGM,
+        last_idx=None,
         custodial_idx=CUST,
         name_threshold=threshold,
     )
@@ -329,6 +330,17 @@ class ProcessRoundTripTests(unittest.TestCase):
     def test_missing_required_column_raises(self):
         with self.assertRaises(ValueError):
             self._run("Name,DOB\nAmy,2001-01-01\n")
+
+    def test_combined_last_data_date_column(self):
+        # A single "Last Data Date" column drives the keep decision.
+        text = (
+            "Name,DOB,MRN,Custodial Status,Last Data Date\n"
+            "Kim Lee,1980-01-01,1,Unclaimed,2025-01-01\n"
+            "Kim Lee,1980-01-01,2,Unclaimed,2025-06-01\n"
+        )
+        yes, rows = self._run(text)
+        ri = rows[0].index("Recommendation")
+        self.assertEqual([r[ri] for r in rows[1:]], ["Remove this account", "Maintain this account"])
 
 
 if __name__ == "__main__":

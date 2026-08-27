@@ -48,6 +48,7 @@ DOB_ALIASES = ["Date of Birth", "DOB", "Birth Date", "Birthdate", "birthDate"]
 MRN_ALIASES = ["MRN", "Medical Record Number", "Medical Record #"]
 CGM_DATE_ALIASES = ["CGM Last Data Date"]
 BGM_DATE_ALIASES = ["BGM Last Data Date"]
+LAST_DATA_ALIASES = ["Last Data Date", "lastDataDate", "Last Data"]
 CUSTODIAL_ALIASES = ["Custodial Status", "Claimed?", "Claimed"]
 FLAG_COLUMN = "Likely Duplicate"
 WHY_COLUMN = "Why"
@@ -216,6 +217,7 @@ def compute_columns(
     dob_idx: int,
     cgm_idx: int | None,
     bgm_idx: int | None,
+    last_idx: int | None,
     custodial_idx: int | None,
     name_threshold: float,
 ) -> list[tuple[str, str, str, str]]:
@@ -294,9 +296,19 @@ def compute_columns(
                 weak_types[i].add("mrn")
                 weak_types[j].add("mrn")
 
+    # Latest data date per row = later of any present CGM / BGM / combined
+    # last-data-date columns.
     last_dates: list[date | None] = []
     for row in data_rows:
-        dates = [d for d in (parse_date(cell(row, cgm_idx)), parse_date(cell(row, bgm_idx))) if d]
+        dates = [
+            d
+            for d in (
+                parse_date(cell(row, cgm_idx)),
+                parse_date(cell(row, bgm_idx)),
+                parse_date(cell(row, last_idx)),
+            )
+            if d
+        ]
         last_dates.append(max(dates) if dates else None)
     claimed = [normalize(cell(r, custodial_idx)) == "claimed" for r in data_rows]
 
@@ -404,16 +416,18 @@ def process(
     # Optional columns that drive the Recommendation. Absent -> None.
     cgm_idx = resolve_column(header, CGM_DATE_ALIASES)
     bgm_idx = resolve_column(header, BGM_DATE_ALIASES)
+    last_idx = resolve_column(header, LAST_DATA_ALIASES)
     custodial_idx = resolve_column(header, CUSTODIAL_ALIASES)
-    if cgm_idx is None and bgm_idx is None:
+    if cgm_idx is None and bgm_idx is None and last_idx is None:
         print(
-            "warning: no CGM/BGM last-data-date column found; "
+            "warning: no last-data-date column found (CGM/BGM/Last Data Date); "
             "Recommendation will be blank unless a Claimed account breaks a tie.",
             file=sys.stderr,
         )
 
     results = compute_columns(
-        data_rows, name_idx, mrn_idx, dob_idx, cgm_idx, bgm_idx, custodial_idx, name_threshold
+        data_rows, name_idx, mrn_idx, dob_idx, cgm_idx, bgm_idx, last_idx,
+        custodial_idx, name_threshold
     )
 
     # Row output order. Default: original file order. With --group: duplicate

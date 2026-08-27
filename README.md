@@ -127,9 +127,11 @@ These columns are **optional** and improve the `Recommendation` when present:
 - `Custodial Status` (`Claimed` / `Unclaimed`)
 - `CGM Last Data Date`
 - `BGM Last Data Date`
+- `Last Data Date` — a combined column (`Last Data Date`, `lastDataDate`); used together
+  with the CGM/BGM columns, taking the latest of whichever are present.
 
-If neither date column is present, the tool prints a warning and leaves `Recommendation`
-blank (except where a `Claimed` account breaks a tie).
+If no last-data-date column is present, the tool prints a warning and leaves
+`Recommendation` blank (except where a `Claimed` account breaks a tie).
 
 ### Options
 
