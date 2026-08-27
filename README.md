@@ -2,13 +2,14 @@
 
 Flag likely-duplicate patients in a clinic patient-list CSV.
 
-Given a CSV of patients, this tool appends three columns:
+Given a CSV of patients, this tool appends four columns:
 
 | Column | Values | Meaning |
 | --- | --- | --- |
 | `Likely Duplicate` | `YES` / `NO` | Whether the patient likely duplicates another patient in the file. |
 | `Why` | e.g. `Fuzzy name match; Shared MRN` | The basis for a `YES` flag (blank for `NO`). |
-| `Recommendation` | `Maintain this account` / `Remove this account` / *(blank)* | Within a duplicate group, which single account to keep. |
+| `Recommendation` | `Maintain this account` / `Remove this account` / `Review — …` / *(blank)* | Action for the row: keep/remove for high-confidence duplicates, or `Review` when only name or only MRN matches and the DOB differs. |
+| `Duplicate Group` | cluster number / *(blank)* | Stable id shared by all members of a duplicate cluster; blank for non-duplicates. Sort or filter on it to review clusters together (or use `--group`). |
 
 It works on a bare 3-column file (`Name`, `Date of Birth`, `MRN`) **or** on a full
 Tidepool web-app patient-list export — the metadata header block at the top of an
@@ -33,16 +34,31 @@ matches B by name and B matches C by MRN, then A, B, and C form one group.
 
 ## How the recommendation is chosen
 
-Within each duplicate group, exactly one account is kept (`Maintain this account`) and
-the rest are marked `Remove this account`. The account to keep is chosen by, in order:
+Recommendations are tiered by **match confidence**, using date of birth as
+corroboration so the tool never blanket-recommends removing accounts that might belong
+to different people:
+
+- **Strong match → `Maintain` / `Remove`.** A pair agrees on **two or more** of
+  {name, DOB, MRN} — e.g. name+DOB, MRN+DOB, or name+MRN. These are treated as the same
+  patient. Within each strong cluster exactly one account is kept and the rest removed.
+- **Weak match → `Review`, never auto-removed.** Only the name matches (DOB differs) or
+  only the MRN matches. These could be DOB typos *or* genuinely different people, so a
+  human decides:
+  - `Review — possible duplicate (name match, DOB differs)`
+  - `Review — possible MRN typo (MRN match, DOB differs)`
+
+For strong clusters, the account to **keep** is chosen by, in order:
 
 1. **Claimed** — a `Custodial Status` of `Claimed` beats all other accounts.
 2. **Has data** — an account with data beats one without.
 3. **Latest data date** — the later of `CGM Last Data Date` and `BGM Last Data Date`.
 4. Earliest row, as a final tie-breaker.
 
-If a group has no distinguishing signal at all (nobody claimed, no data anywhere), the
-`Recommendation` is left blank rather than guessed. Non-duplicate patients are left blank.
+If a strong cluster has no distinguishing signal at all (nobody claimed, no data
+anywhere), the `Recommendation` is left blank rather than guessed. Non-duplicate patients
+are left blank. Note: patients are still **grouped and flagged** on name or MRN alone (so
+nothing is missed) — DOB only affects the *recommended action*, not whether a row is
+flagged.
 
 ## Requirements
 
@@ -87,20 +103,24 @@ Try it on the included samples:
 # small, minimal fixture
 python3 patient_list_dedup.py sample_patient_list.csv
 
-# longer, realistic export (metadata header block + 30 patients) that
+# longer, realistic export (metadata header block + 34 patients) that
 # demonstrates every feature: claimed-beats-data, latest-date tie-breaks,
-# transitive groups, fuzzy spelling variants, and no-signal blanks
-python3 patient_list_dedup.py sample_patient_list_large.csv
+# transitive groups, fuzzy spelling variants, no-signal blanks, and the
+# Review tiers (namesakes and shared-MRN mismatches with differing DOBs).
+# Add --group to sort duplicate clusters together.
+python3 patient_list_dedup.py sample_patient_list_large.csv --group
 ```
 
 ### Input columns
 
 Only three columns are **required** (header names are case-insensitive; common aliases
-are accepted, e.g. `Name` or `Patient Name`, `DOB` or `Date of Birth`):
+are accepted, including the Tidepool DB column names):
 
-- Name
-- Date of Birth
-- MRN
+- Name — `Patient Name`, `Name`, `Full Name`, `fullName`
+- Date of Birth — `Date of Birth`, `DOB`, `Birth Date`, `birthDate`
+- MRN — `MRN`, `Medical Record Number`
+
+Or override any of them with `--name-col` / `--dob-col` / `--mrn-col`.
 
 These columns are **optional** and improve the `Recommendation` when present:
 
@@ -116,6 +136,7 @@ blank (except where a `Claimed` account breaks a tie).
 | Flag | Default | Description |
 | --- | --- | --- |
 | `-o`, `--output PATH` | `<input>_dedup.csv` | Output file path. |
+| `--group` | off | Sort output so duplicate clusters are contiguous (cluster order, `Maintain` before `Remove`; non-duplicates last). |
 | `--name-threshold FLOAT` | `0.90` | Fuzzy name-match similarity, `0`–`1`. Use `1.0` for exact-name-only. |
 | `--delimiter CHAR` | auto | Force the field delimiter (`,` or `\t`). Auto-detects tab vs comma. |
 | `--name-col NAME` | — | Override the Name header (repeatable). |
@@ -138,9 +159,9 @@ against a real export before relying on the output.
 ## Handling patient data (PHI)
 
 Patient CSVs contain PHI. The repository's `.gitignore` excludes `*.csv`, `*.xlsx`,
-`*.parquet`, and a `data/` directory so real exports are not committed by accident (the
-synthetic `sample_patient_list.csv` is the one deliberate exception). Keep real data out
-of the repo.
+`*.parquet`, `*_dedup.csv` outputs, and a `data/` directory so real exports are not
+committed by accident. The only deliberate exceptions are the synthetic `sample_*.csv`
+fixtures (no real patient data). Keep real data out of the repo.
 
 ## Development
 
@@ -161,6 +182,7 @@ python3 -m unittest discover -s tests
 ```
 
 It covers normalization and date parsing, the fuzzy-name threshold, transitive grouping
-(name ∪ MRN), the flag/why/recommendation logic for each priority tier and the
-no-signal-blank case, and a `process` round-trip on both a bare 3-column file and a full
-export with a metadata header block (including delimiter auto-detection).
+(name ∪ MRN), the strong/weak confidence tiers (name-or-MRN-only with a DOB conflict →
+`Review`, never `Remove`), the keep-account priority order and no-signal-blank case, the
+`Duplicate Group` numbering, and a `process` round-trip on both a bare 3-column file and a
+full export with a metadata header block (including delimiter auto-detection).

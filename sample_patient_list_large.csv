@@ -4,7 +4,7 @@ Exported By (Email),akim@example-health.org
 Clinic Name,Example Health Endocrinology
 Workspace ID,ws_1234abcd
 Days of CGM Data Summarized,14 days
-Total Patients,30
+Total Patients,34
 
 Patient Name,Patient User ID,MRN,Date of Birth,Custodial Status,Diabetes Type,CGM Last Data Date,BGM Last Data Date
 Maria Garcia,mg01,100001,1988-04-12,Unclaimed,Type 1,2025-08-20,
@@ -37,3 +37,7 @@ Olivia Ford,of01,700021,1972-06-25,Claimed,Type 2,2025-08-12,
 Marcus Bell,mb01,700022,1959-03-30,Claimed,Type 2,,2025-08-01
 Nina Volkov,nv01,700023,2003-07-07,Unclaimed,Type 1,2025-08-26,
 Sam Rivera,sv01,700024,1980-10-10,Claimed,Type 1,2025-08-20,
+James Wright,jw01,700025,1990-03-03,Claimed,Type 1,2025-08-15,
+James Wright,jw02,700026,1962-12-24,Claimed,Type 2,2025-08-10,
+Karen Diaz,kd01,800001,1977-05-05,Claimed,Type 1,2025-08-14,
+Paula Nguyen,pn01,800001,1988-11-30,Unclaimed,Type 2,2025-08-06,

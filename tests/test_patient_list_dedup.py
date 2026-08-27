@@ -31,6 +31,7 @@ def compute(rows, threshold=0.90):
         rows_to_records(rows),
         name_idx=NAME,
         mrn_idx=MRN,
+        dob_idx=DOB,
         cgm_idx=CGM,
         bgm_idx=BGM,
         custodial_idx=CUST,
@@ -96,10 +97,11 @@ class BuildGroupsTests(unittest.TestCase):
 class FlagAndWhyTests(unittest.TestCase):
     def test_singleton_is_no(self):
         rows = [["Solo", "1999-09-09", "99", "Claimed", "2025-01-01", ""]]
-        flag, why, rec = compute(rows)[0]
+        flag, why, rec, group = compute(rows)[0]
         self.assertEqual(flag, "NO")
         self.assertEqual(why, "")
         self.assertEqual(rec, "")
+        self.assertEqual(group, "")
 
     def test_exact_name_match(self):
         rows = [
@@ -187,6 +189,79 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(recs, ["Maintain this account", "Remove this account"])
 
 
+class ConfidenceTierTests(unittest.TestCase):
+    def test_name_only_dob_differs_is_review_not_remove(self):
+        rows = [
+            ["John Smith", "1980-01-01", "1", "Claimed", "2025-01-01", ""],
+            ["Jon Smith", "1990-05-05", "2", "Unclaimed", "2025-02-01", ""],
+        ]
+        results = compute(rows)
+        self.assertEqual([r[0] for r in results], ["YES", "YES"])   # still flagged
+        self.assertEqual([r[2] for r in results], [pld.REVIEW_NAME, pld.REVIEW_NAME])
+
+    def test_name_and_mrn_match_dob_differs_is_strong(self):
+        rows = [
+            ["Ann Fox", "1980-01-01", "55", "Claimed", "", ""],
+            ["Ann Fox", "1999-09-09", "55", "Unclaimed", "2025-01-01", ""],
+        ]
+        recs = [r[2] for r in compute(rows)]
+        self.assertEqual(recs, [pld.MAINTAIN, pld.REMOVE])
+
+    def test_mrn_only_dob_differs_is_review(self):
+        rows = [
+            ["Alice Brown", "2000-02-02", "777", "Unclaimed", "2025-04-01", ""],
+            ["Bob Green", "1995-07-07", "777", "Unclaimed", "", ""],
+        ]
+        results = compute(rows)
+        self.assertEqual([r[0] for r in results], ["YES", "YES"])
+        self.assertEqual([r[2] for r in results], [pld.REVIEW_MRN, pld.REVIEW_MRN])
+
+    def test_mixed_cluster_removes_strong_reviews_weak(self):
+        # A & B are the same person (name+DOB); C shares only the name with a
+        # different DOB. C must be Review, never Remove.
+        rows = [
+            ["Kim Lee", "1980-01-01", "1", "Claimed", "2025-01-01", ""],   # A
+            ["Kim Lee", "1980-01-01", "2", "Unclaimed", "", ""],           # B
+            ["Kim Lee", "1995-05-05", "3", "Unclaimed", "2025-03-01", ""], # C
+        ]
+        results = compute(rows)
+        self.assertEqual([r[0] for r in results], ["YES", "YES", "YES"])
+        self.assertEqual(
+            [r[2] for r in results],
+            [pld.MAINTAIN, pld.REMOVE, pld.REVIEW_NAME],
+        )
+
+    def test_name_dob_match_still_strong(self):
+        rows = [
+            ["Jon Smith", "1985-01-01", "111", "Unclaimed", "2025-02-15", ""],
+            ["John Smith", "1985-01-01", "222", "Unclaimed", "2025-03-01", ""],
+        ]
+        recs = [r[2] for r in compute(rows)]
+        self.assertEqual(recs, [pld.REMOVE, pld.MAINTAIN])
+
+
+class GroupColumnTests(unittest.TestCase):
+    def test_distinct_clusters_get_distinct_numbers(self):
+        rows = [
+            ["Amy Lee", "2001-01-01", "1", "Unclaimed", "", ""],   # cluster 1
+            ["Ken Ito", "1990-01-01", "5", "Unclaimed", "", ""],   # cluster 2
+            ["Amy Lee", "2001-01-01", "2", "Unclaimed", "", ""],   # cluster 1
+            ["Ken Ito", "1990-01-01", "6", "Unclaimed", "", ""],   # cluster 2
+            ["Solo", "1970-01-01", "9", "Unclaimed", "", ""],      # not a dup
+        ]
+        groups = [r[3] for r in compute(rows)]
+        self.assertEqual(groups, ["1", "2", "1", "2", ""])
+
+    def test_transitive_members_share_one_number(self):
+        rows = [
+            ["Robert Lee", "1990-02-02", "300003", "Unclaimed", "", ""],
+            ["Robert Lee", "1990-02-02", "300099", "Unclaimed", "", ""],  # name link
+            ["Bob Lee", "1990-02-02", "300003", "Unclaimed", "", ""],     # MRN link
+        ]
+        groups = [r[3] for r in compute(rows)]
+        self.assertEqual(groups, ["1", "1", "1"])
+
+
 class ProcessRoundTripTests(unittest.TestCase):
     def _run(self, text, **kwargs):
         with tempfile.TemporaryDirectory() as tmp:
@@ -209,9 +284,12 @@ class ProcessRoundTripTests(unittest.TestCase):
         text = "Name,DOB,MRN\nAmy Lee,2001-01-01,10\nAmy Lee,2001-01-01,11\nSolo,1999-09-09,99\n"
         yes, rows = self._run(text)
         self.assertEqual(yes, 2)
-        self.assertEqual(rows[0][-3:], ["Likely Duplicate", "Why", "Recommendation"])
-        self.assertEqual(rows[1][-3], "YES")
-        self.assertEqual(rows[3][-3], "NO")
+        self.assertEqual(
+            rows[0][-4:],
+            ["Likely Duplicate", "Why", "Recommendation", "Duplicate Group"],
+        )
+        self.assertEqual(rows[1][-4], "YES")
+        self.assertEqual(rows[3][-4], "NO")
 
     def test_metadata_block_preserved(self):
         text = (
@@ -229,8 +307,11 @@ class ProcessRoundTripTests(unittest.TestCase):
         self.assertEqual(rows[0], ["Report Date Time", "2025-03-14 10:33 AM"])
         self.assertEqual(rows[1], ["Total Patients", "3"])
         self.assertEqual(rows[2], [])  # blank separator line
-        # Header row gains the three new columns.
-        self.assertEqual(rows[3][-3:], ["Likely Duplicate", "Why", "Recommendation"])
+        # Header row gains the new columns.
+        self.assertEqual(
+            rows[3][-4:],
+            ["Likely Duplicate", "Why", "Recommendation", "Duplicate Group"],
+        )
 
     def test_tab_delimited_autodetected(self):
         text = "Name\tDOB\tMRN\nAmy Lee\t2001-01-01\t10\nAmy Lee\t2001-01-01\t11\n"
@@ -243,7 +324,7 @@ class ProcessRoundTripTests(unittest.TestCase):
             )
             header = out.read_text(encoding="utf-8").splitlines()[0]
         self.assertEqual(yes, 2)
-        self.assertIn("Likely Duplicate\tWhy\tRecommendation", header)
+        self.assertIn("Likely Duplicate\tWhy\tRecommendation\tDuplicate Group", header)
 
     def test_missing_required_column_raises(self):
         with self.assertRaises(ValueError):
