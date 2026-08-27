@@ -15,6 +15,32 @@ It works on a bare 3-column file (`Name`, `Date of Birth`, `MRN`) **or** on a fu
 Tidepool web-app patient-list export — the metadata header block at the top of an
 export is detected and passed through unchanged.
 
+## Quick start
+
+Requires **Python 3.9+** and nothing else (standard library only). Check with
+`python3 --version`.
+
+```bash
+# 1. Get the code
+git clone https://github.com/wzeller/patient_list_dedup.git
+cd patient_list_dedup
+
+# 2. Try it on the included sample (--group sorts duplicate clusters together)
+python3 patient_list_dedup.py sample_patient_list_large.csv --group
+
+# 3. Run it on your own export — quote any path that contains spaces
+python3 patient_list_dedup.py "/path/to/your patients.csv" -o results.csv
+```
+
+Step 2 writes `sample_patient_list_large_dedup.csv` next to the input; step 3 writes
+`results.csv`. The output is your input plus four columns — `Likely Duplicate`, `Why`,
+`Recommendation`, and `Duplicate Group`. Open it in Excel / Numbers / Sheets and sort by
+`Duplicate Group` (or pass `--group`) to review each cluster of duplicates together.
+
+Only `Name`, `Date of Birth`, and `MRN` are required; `Custodial Status` and the
+last-data-date columns sharpen the recommendation when present (see
+[Input columns](#input-columns)). For the full options list, jump to [Usage](#usage).
+
 ## How duplicates are detected
 
 A patient is flagged `YES` if it matches **any other patient** on either:
