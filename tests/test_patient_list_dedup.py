@@ -190,6 +190,32 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(recs, ["Maintain this account", "Remove this account"])
 
 
+class NullPlaceholderTests(unittest.TestCase):
+    def test_null_like_mrn_does_not_link(self):
+        rows = [
+            ["Alice Brown", "2000-02-02", "null", "Unclaimed", "", ""],
+            ["Bob Green", "1995-07-07", "NaN", "Unclaimed", "", ""],
+            ["Carol Diaz", "1988-08-08", "NA", "Unclaimed", "", ""],
+        ]
+        self.assertEqual([r[0] for r in compute(rows)], ["NO", "NO", "NO"])
+
+    def test_null_like_dob_does_not_count_as_agreement(self):
+        # Same name, both DOB "null": DOB must NOT count as agreeing, so this
+        # stays a weak (name-only) match -> Review, not a strong Remove.
+        rows = [
+            ["Kim Lee", "null", "1", "Unclaimed", "2025-01-01", ""],
+            ["Kim Lee", "NaN", "2", "Unclaimed", "", ""],
+        ]
+        self.assertEqual([r[2] for r in compute(rows)], [pld.REVIEW_NAME, pld.REVIEW_NAME])
+
+    def test_real_mrn_still_links(self):
+        rows = [
+            ["Alice Brown", "2000-02-02", "777", "Unclaimed", "2025-04-01", ""],
+            ["Bob Green", "1995-07-07", "777", "Unclaimed", "", ""],
+        ]
+        self.assertEqual([r[0] for r in compute(rows)], ["YES", "YES"])
+
+
 class ConfidenceTierTests(unittest.TestCase):
     def test_name_only_dob_differs_is_review_not_remove(self):
         rows = [

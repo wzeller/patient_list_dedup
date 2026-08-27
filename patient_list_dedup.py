@@ -60,13 +60,23 @@ REVIEW_NAME = "Review — possible duplicate (name match, DOB differs)"
 REVIEW_MRN = "Review — possible MRN typo (MRN match, DOB differs)"
 DEFAULT_NAME_THRESHOLD = 0.90
 
+# Placeholder strings that some exports write for missing values. These are
+# treated as empty so patients aren't linked by a shared "null"/"NaN" MRN, name,
+# or DOB.
+NULL_LIKE = {"null", "nan", "none", "n/a", "na", "nil"}
+
 # Date formats accepted for the CGM/BGM last-data-date columns.
 DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d")
 
 
 def normalize(value: str) -> str:
-    """Lowercase and strip surrounding whitespace for match comparisons."""
-    return (value or "").strip().lower()
+    """Lowercase and strip whitespace; treat null-like placeholders as empty.
+
+    Values such as "null", "NaN", or "NA" (however cased) become "" so they are
+    not matched against each other as if they were real data.
+    """
+    v = (value or "").strip().lower()
+    return "" if v in NULL_LIKE else v
 
 
 def resolve_column(header: list[str], aliases: list[str]) -> int | None:

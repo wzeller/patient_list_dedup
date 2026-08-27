@@ -51,7 +51,9 @@ A patient is flagged `YES` if it matches **any other patient** on either:
 
 Matching is case-insensitive and ignores leading/trailing whitespace, so `Tom Snyder `
 matches `  TOM SNYDER`. Blank names/MRNs never match (two patients aren't linked just
-because both lack an MRN).
+because both lack an MRN). Placeholder strings that exports sometimes write for missing
+values — `null`, `NaN`, `None`, `NA`, `N/A`, `nil` — are treated as blank, so patients are
+not linked by a shared literal `null` MRN, name, or DOB.
 
 This is the faithful reduction of the clinic-merge "potential duplicate" rule (match on
 two-or-more of Name/DOB/MRN, or on Name alone, or on MRN alone) — the only case that does
