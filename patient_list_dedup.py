@@ -58,6 +58,8 @@ MAINTAIN = "Maintain this account"
 REMOVE = "Remove this account"
 REVIEW_NAME = "Review — possible duplicate (name match, DOB differs)"
 REVIEW_MRN = "Review — possible MRN typo (MRN match, DOB differs)"
+IF_CONFIRMED_MAINTAIN = "If confirmed duplicate: maintain this account"
+IF_CONFIRMED_REMOVE = "If confirmed duplicate: remove this account"
 DEFAULT_NAME_THRESHOLD = 0.90
 
 # Placeholder strings that some exports write for missing values. These are
@@ -239,7 +241,10 @@ def compute_columns(
       of {name, DOB, MRN} -- e.g. name+DOB, MRN+DOB, or name+MRN.
     - WEAK (-> Review, never auto-Remove): only the name matches (DOB differs) or
       only the MRN matches. These may be DOB typos or genuinely different people,
-      so a human decides.
+      so a human decides. When the review cluster has a keeper signal (a Claimed
+      account or a last-data date), the Review text carries a conditional verdict
+      ("If confirmed duplicate: maintain/remove") ranked over the whole cluster
+      by the same rules as strong groups.
 
     group is a stable cluster number (as a string) for duplicate rows, numbered
     by first appearance; blank for non-duplicate rows.
@@ -320,7 +325,11 @@ def compute_columns(
             if d
         ]
         last_dates.append(max(dates) if dates else None)
-    claimed = [normalize(cell(r, custodial_idx)) == "claimed" for r in data_rows]
+    # "claimed" per Tidepool exports; TRUE/yes/1 per boolean-style exports.
+    claimed = [
+        normalize(cell(r, custodial_idx)) in {"claimed", "true", "yes", "1"}
+        for r in data_rows
+    ]
 
     # Maintain/Remove within STRONG clusters only. Preference order:
     # Claimed > has-data > latest data date > earliest row.
@@ -341,7 +350,16 @@ def compute_columns(
         for i in members:
             recommendation[i] = MAINTAIN if i == keep else REMOVE
 
-    # Weak-only duplicates (in a review cluster but no strong action) -> Review.
+    # Weak-only duplicates (in a review cluster but no strong action) -> Review,
+    # plus a conditional keep/remove verdict for when the user confirms the
+    # duplicate. The keeper is ranked over the WHOLE review cluster by the same
+    # rules: Claimed always wins, then has-data, then latest data date.
+    cluster_keeper: dict[int, int] = {}
+    for root, members in groups.items():
+        if len(members) > 1 and any(
+            claimed[i] or last_dates[i] is not None for i in members
+        ):
+            cluster_keeper[root] = max(members, key=rank)
     for i in range(n):
         if recommendation[i] or len(groups[uf.find(i)]) < 2:
             continue
@@ -352,6 +370,11 @@ def compute_columns(
             reviews.append(REVIEW_NAME)
         if "mrn" in weak_types[i]:
             reviews.append(REVIEW_MRN)
+        root = uf.find(i)
+        if reviews and root in cluster_keeper:
+            reviews.append(
+                IF_CONFIRMED_MAINTAIN if cluster_keeper[root] == i else IF_CONFIRMED_REMOVE
+            )
         recommendation[i] = "; ".join(reviews)
 
     # Number duplicate clusters by first appearance (stable, deterministic).

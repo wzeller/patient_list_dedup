@@ -164,6 +164,15 @@ class RecommendationTests(unittest.TestCase):
         recs = [r[2] for r in compute(rows)]
         self.assertEqual(recs, ["Remove this account", "Maintain this account"])
 
+    def test_boolean_claimed_column_recognized(self):
+        # Query-style exports use TRUE/FALSE for the claimed column.
+        rows = [
+            ["Ann Fox", "1980-01-01", "1", "FALSE", "2025-05-01", ""],
+            ["Ann Fox", "1980-01-01", "2", "TRUE", "", ""],
+        ]
+        recs = [r[2] for r in compute(rows)]
+        self.assertEqual(recs, ["Remove this account", "Maintain this account"])
+
     def test_has_data_beats_no_data(self):
         rows = [
             ["Ken Ito", "1980-01-01", "1", "Unclaimed", "", ""],
@@ -206,7 +215,13 @@ class NullPlaceholderTests(unittest.TestCase):
             ["Kim Lee", "null", "1", "Unclaimed", "2025-01-01", ""],
             ["Kim Lee", "NaN", "2", "Unclaimed", "", ""],
         ]
-        self.assertEqual([r[2] for r in compute(rows)], [pld.REVIEW_NAME, pld.REVIEW_NAME])
+        self.assertEqual(
+            [r[2] for r in compute(rows)],
+            [
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_MAINTAIN}",
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_REMOVE}",
+            ],
+        )
 
     def test_real_mrn_still_links(self):
         rows = [
@@ -218,13 +233,21 @@ class NullPlaceholderTests(unittest.TestCase):
 
 class ConfidenceTierTests(unittest.TestCase):
     def test_name_only_dob_differs_is_review_not_remove(self):
+        # Row 0 is Claimed, so it is the conditional keeper even though row 1
+        # has the later data date.
         rows = [
             ["John Smith", "1980-01-01", "1", "Claimed", "2025-01-01", ""],
             ["Jon Smith", "1990-05-05", "2", "Unclaimed", "2025-02-01", ""],
         ]
         results = compute(rows)
         self.assertEqual([r[0] for r in results], ["YES", "YES"])   # still flagged
-        self.assertEqual([r[2] for r in results], [pld.REVIEW_NAME, pld.REVIEW_NAME])
+        self.assertEqual(
+            [r[2] for r in results],
+            [
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_MAINTAIN}",
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_REMOVE}",
+            ],
+        )
 
     def test_name_and_mrn_match_dob_differs_is_strong(self):
         rows = [
@@ -241,11 +264,18 @@ class ConfidenceTierTests(unittest.TestCase):
         ]
         results = compute(rows)
         self.assertEqual([r[0] for r in results], ["YES", "YES"])
-        self.assertEqual([r[2] for r in results], [pld.REVIEW_MRN, pld.REVIEW_MRN])
+        self.assertEqual(
+            [r[2] for r in results],
+            [
+                f"{pld.REVIEW_MRN}; {pld.IF_CONFIRMED_MAINTAIN}",
+                f"{pld.REVIEW_MRN}; {pld.IF_CONFIRMED_REMOVE}",
+            ],
+        )
 
     def test_mixed_cluster_removes_strong_reviews_weak(self):
         # A & B are the same person (name+DOB); C shares only the name with a
-        # different DOB. C must be Review, never Remove.
+        # different DOB. C must be Review, never an unconditional Remove; its
+        # conditional verdict ranks the whole cluster, where Claimed A wins.
         rows = [
             ["Kim Lee", "1980-01-01", "1", "Claimed", "2025-01-01", ""],   # A
             ["Kim Lee", "1980-01-01", "2", "Unclaimed", "", ""],           # B
@@ -255,7 +285,7 @@ class ConfidenceTierTests(unittest.TestCase):
         self.assertEqual([r[0] for r in results], ["YES", "YES", "YES"])
         self.assertEqual(
             [r[2] for r in results],
-            [pld.MAINTAIN, pld.REMOVE, pld.REVIEW_NAME],
+            [pld.MAINTAIN, pld.REMOVE, f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_REMOVE}"],
         )
 
     def test_name_dob_match_still_strong(self):
@@ -265,6 +295,57 @@ class ConfidenceTierTests(unittest.TestCase):
         ]
         recs = [r[2] for r in compute(rows)]
         self.assertEqual(recs, [pld.REMOVE, pld.MAINTAIN])
+
+
+class ConditionalVerdictTests(unittest.TestCase):
+    def test_no_signal_review_has_no_verdict(self):
+        # Weak pair with nobody Claimed and no data dates: bare Review text.
+        rows = [
+            ["Pat Doe", "1980-01-01", "1", "Unclaimed", "", ""],
+            ["Pat Doe", "1990-09-09", "2", "Unclaimed", "", ""],
+        ]
+        self.assertEqual([r[2] for r in compute(rows)], [pld.REVIEW_NAME, pld.REVIEW_NAME])
+
+    def test_claimed_beats_data_for_verdict(self):
+        # Claimed account without data outranks unclaimed account with data.
+        rows = [
+            ["Pat Doe", "1980-01-01", "1", "Unclaimed", "2025-05-01", ""],
+            ["Pat Doe", "1990-09-09", "2", "Claimed", "", ""],
+        ]
+        self.assertEqual(
+            [r[2] for r in compute(rows)],
+            [
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_REMOVE}",
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_MAINTAIN}",
+            ],
+        )
+
+    def test_latest_data_picks_verdict_when_none_claimed(self):
+        rows = [
+            ["Pat Doe", "1980-01-01", "1", "Unclaimed", "2025-02-15", ""],
+            ["Pat Doe", "1990-09-09", "2", "Unclaimed", "2025-03-01", ""],
+        ]
+        self.assertEqual(
+            [r[2] for r in compute(rows)],
+            [
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_REMOVE}",
+                f"{pld.REVIEW_NAME}; {pld.IF_CONFIRMED_MAINTAIN}",
+            ],
+        )
+
+    def test_exactly_one_conditional_keeper_per_cluster(self):
+        rows = [
+            ["Pat Doe", "1980-01-01", "1", "Unclaimed", "2025-01-01", ""],
+            ["Pat Doe", "1990-09-09", "2", "Unclaimed", "2025-02-01", ""],
+            ["Pat Doe", "1999-12-31", "3", "Unclaimed", "2025-03-01", ""],
+        ]
+        recs = [r[2] for r in compute(rows)]
+        self.assertEqual(
+            sum(rec.endswith(pld.IF_CONFIRMED_MAINTAIN) for rec in recs), 1
+        )
+        self.assertEqual(
+            sum(rec.endswith(pld.IF_CONFIRMED_REMOVE) for rec in recs), 2
+        )
 
 
 class GroupColumnTests(unittest.TestCase):

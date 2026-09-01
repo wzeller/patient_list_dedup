@@ -8,7 +8,7 @@ Given a CSV of patients, this tool appends four columns:
 | --- | --- | --- |
 | `Likely Duplicate` | `YES` / `NO` | Whether the patient likely duplicates another patient in the file. |
 | `Why` | e.g. `Fuzzy name match; Shared MRN` | The basis for a `YES` flag (blank for `NO`). |
-| `Recommendation` | `Maintain this account` / `Remove this account` / `Review — …` / *(blank)* | Action for the row: keep/remove for high-confidence duplicates, or `Review` when only name or only MRN matches and the DOB differs. |
+| `Recommendation` | `Maintain this account` / `Remove this account` / `Review — …` / *(blank)* | Action for the row: keep/remove for high-confidence duplicates, or `Review` when only name or only MRN matches and the DOB differs. Review rows also carry an `If confirmed duplicate: maintain/remove this account` verdict when the cluster has a claimed account or data to rank by. |
 | `Duplicate Group` | cluster number / *(blank)* | Stable id shared by all members of a duplicate cluster; blank for non-duplicates. Sort or filter on it to review clusters together (or use `--group`). |
 
 It works on a bare 3-column file (`Name`, `Date of Birth`, `MRN`) **or** on a full
@@ -75,7 +75,13 @@ to different people:
   - `Review — possible duplicate (name match, DOB differs)`
   - `Review — possible MRN typo (MRN match, DOB differs)`
 
-For strong clusters, the account to **keep** is chosen by, in order:
+  When the cluster has a distinguishing signal, the Review text also carries a
+  conditional verdict for after the human confirms the duplicate —
+  `If confirmed duplicate: maintain this account` on exactly one account per cluster
+  (chosen by the same keep-account priority below, ranked across the whole cluster)
+  and `If confirmed duplicate: remove this account` on the rest.
+
+The account to **keep** is chosen by, in order:
 
 1. **Claimed** — a `Custodial Status` of `Claimed` beats all other accounts.
 2. **Has data** — an account with data beats one without.
@@ -87,6 +93,71 @@ anywhere), the `Recommendation` is left blank rather than guessed. Non-duplicate
 are left blank. Note: patients are still **grouped and flagged** on name or MRN alone (so
 nothing is missed) — DOB only affects the *recommended action*, not whether a row is
 flagged.
+
+## SQL query variant
+
+[`patient_list_dedup.sql`](patient_list_dedup.sql) implements the same detection and
+recommendation rules as a warehouse query (Spark/Databricks SQL) over the live patient
+tables, so results can be pulled per clinic without a CSV export. It takes one parameter,
+`:clinic` — a clinic id, an exact clinic name, or a partial name. **If `:clinic` is blank,
+every duplicate column is `NULL`** (the query only computes matches within a selected
+clinic); the first thing to check if the columns look empty.
+
+Its output can be exported to CSV and fed straight into the CLI/app — the column names
+(`fullName`, `birthDate`, `mrn`, `claimed`, `lastDataDate`) are all recognized.
+
+### Output columns
+
+Pass-through identity columns: `fullName`, `claimed` (true when the account has an email,
+i.e. the patient claimed it), `userId`, `birthDate`, `mrn`, `Connection Provider`,
+`Connection State`, `lastDataDate` (latest of the CGM and BGM last-data dates), and
+`clinic_name` / `clinic_id`.
+
+The four computed columns mirror the CLI's:
+
+| SQL column | CLI equivalent | Values | Meaning |
+| --- | --- | --- | --- |
+| `is_duplicate_match` | `Likely Duplicate` | `true` / `false` / `NULL` | Whether the patient matches at least one other patient in the clinic on name (exact or fuzzy) or MRN. `NULL` when no clinic is selected. |
+| `duplicate_cluster` | `Duplicate Group` | `1..N` / `NULL` | Stable id shared by every member of a duplicate cluster (numbered by lowest member `userId`). `NULL` for non-duplicates. Sort on it to review clusters together. |
+| `duplicate_reason` | `Why` | e.g. `Exact name match; Shared MRN` | The basis for the match. `Fuzzy name match` means the names differ but score ≥ 0.90 similarity. |
+| `recommended_action` | `Recommendation` | see below | The suggested action for the row. |
+
+### Reading `recommended_action`
+
+For duplicate rows, the value is one of five states:
+
+1. **`Maintain this account`** — high-confidence duplicate (agrees with another account
+   on 2+ of name/DOB/MRN); this is the account to keep in its cluster.
+2. **`Remove this account`** — high-confidence duplicate; a better account (see the
+   keep-account priority above: claimed, then latest data) exists in the cluster.
+3. **`Review - … ; If confirmed duplicate: maintain/remove this account`** — uncertain
+   duplicate (name or MRN matches but the DOB differs — possibly a typo, possibly two
+   different people). A human must confirm; the suffix pre-computes the outcome of that
+   confirmation, with exactly one `maintain` per cluster chosen by the same
+   claimed-then-latest-data ranking.
+4. **`Review - …`** with no suffix — uncertain duplicate in a cluster with *no* ranking
+   signal (nobody claimed, no data anywhere), so no outcome can be pre-computed.
+5. **`NULL`** — either not a duplicate at all (`is_duplicate_match` is false), or a
+   high-confidence duplicate whose cluster has no ranking signal — flagged and clustered,
+   but no keep/remove call is made rather than guessing.
+
+So a typical triage flow: filter `is_duplicate_match = true`, sort by
+`duplicate_cluster`, act on `Maintain`/`Remove` rows directly, review the `Review` rows
+and apply their `If confirmed` verdicts, and handle `NULL`-recommendation clusters
+manually (they usually mean neither account has claimed status or any data).
+
+### Known divergences from the CLI
+
+Deliberately small, but worth knowing when comparing outputs:
+
+- The SQL writes `Review -` with a plain hyphen; the CLI uses an em-dash (`Review —`).
+- Final tie-break when accounts have identical signals: lowest `userId` in SQL vs
+  earliest file row in the CLI.
+- Fuzzy similarity is Levenshtein-based in SQL vs `difflib.SequenceMatcher` in Python.
+  The formula is calibrated to agree at the 0.90 threshold, but transposed-letter typos
+  (`jhon` vs `john`) score lower in SQL and may miss the threshold there.
+- `claimed` comes from account email presence in SQL vs the `Custodial Status` /
+  `claimed` column in a CSV.
 
 ## Requirements
 
@@ -177,7 +248,8 @@ Or override any of them with `--name-col` / `--dob-col` / `--mrn-col`.
 
 These columns are **optional** and improve the `Recommendation` when present:
 
-- `Custodial Status` (`Claimed` / `Unclaimed`)
+- `Custodial Status` (`Claimed` / `Unclaimed`; boolean-style `claimed` columns with
+  `TRUE` / `FALSE` / `yes` / `1` values also work)
 - `CGM Last Data Date`
 - `BGM Last Data Date`
 - `Last Data Date` — a combined column (`Last Data Date`, `lastDataDate`); used together
